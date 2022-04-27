@@ -6,7 +6,7 @@ counts <- count_matrix_assembly("count_matrix.xlsx")
 metadata <- load_metadata("metadata.xlsx")
 metadata <- metadata %>% dplyr::mutate(Group = paste(Genotype, Fast, sep = "_"))
 
-#Quality_control_plots(counts, metadata)
+Quality_control_plots(counts, metadata)
 
 #no evident outliers
 

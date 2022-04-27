@@ -10,7 +10,7 @@ for (i in 1:5){
 
 edgeR_sig <- edgeR_data
 for (i in 1:5){
-    edgeR_sig[[i]]<-edgeR_sig[[i]] %>%
+    edgeR_sig[[i]]<-edgeR_sig[[i]] |>
         dplyr::filter(FDR < 0.05)
     edgeR_sig[[i]]<-edgeR_sig[[i]]$SYMBOL
 }
@@ -93,6 +93,7 @@ setup_ordered <- setup_ordered %>%
             Group == "KO_5h" ~ "HNKO 5h"
         )
     )
+
 order <- c("WT 5h", "HNKO 5h", "WT 18h", "HNKO 18h")
 
 setup_ordered <- setup_ordered %>%
@@ -417,10 +418,11 @@ pBase
 
 #####Test reactomePA####
 
-reactome_test <- ReactomePA::enrichPathway()
-
 reactome_test <- reactomeAnalysis(edgeR_data, "")
-
+reactome_test_up <- reactomeAnalysis(edgeR_data, "Upregulated")
+reactome_test_down <- reactomeAnalysis(edgeR_data, "Downregulated")
+treeplot <- enrichplot::pairwise_termsim(reactome_test_down[[2]])
+enrichplot::treeplot(treeplot)
 edgeR_sig_entrez <- edgeR_sig
 for (i in 1:length(edgeR_sig_entrez)){
     edgeR_sig_entrez[[i]] <- clusterProfiler::bitr(
@@ -441,14 +443,142 @@ bg <- clusterProfiler::bitr(
     drop = T
 )
 
+
+
 clusterTest <- clusterProfiler::compareCluster(geneClusters = edgeR_sig_entrez[-5],
                                 fun = "enrichGO",
                                     universe = bg$ENTREZID,
                                 OrgDb = org.Mm.eg.db,
-                                ont = "MF")
-clusterProfiler::dotplot(clusterTest, showCategory = 20)
+                                ont = "MF",
+                                readable = T)
+clusterProfiler::dotplot(clusterTest, showCategory = 10)
 
-#  tiff(here::here("Data/figures/clustercomparison.tif"), unit = "cm", height = 30, width = 50, res = 600)
-# clusterTest
-# dev.off()
+# tiff(here::here("Data/figures/clustercomparison.tif"), unit = "cm", height = 30, width = 50, res = 600)
+# clusterProfiler::dotplot(clusterTest, showCategory = 20)
+#  dev.off()
+
+
+#####compare cluster on reactomedata####
+ reactomeCluster <- clusterProfiler::compareCluster(geneClusters = edgeR_sig_entrez[-5],
+                                                    fun = "ReactomePA::enrichPathway",
+                                                    organism = "mouse",
+                                                    universe = bg$ENTREZID,
+                                                    readable = T)
+ enrichplot::dotplot(reactomeCluster)+ggplot2::scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 40))
+
+
+  tiff(here::here("Data/figures/clustercomparison_reactome.tif"),
+       unit = "cm",
+       height = 30,
+       width = 50,
+       res = 600)
+   clusterProfiler::dotplot(reactomeCluster, showCategory = 10)+ggplot2::scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60))
+    dev.off()
+
+#extract FAO genes and see their heatmap distribution
+ FAO_genes <- reactomeCluster@compareClusterResult
+ FAO_genes <- FAO_genes |> dplyr::filter(Description == "Fatty acid metabolism") |> dplyr::select(geneID)
+
+ FAO_genes <- paste(FAO_genes[1,],FAO_genes[2,],FAO_genes[3,], sep = "/")
+ FAO_genes <- base::unlist(stringr::str_split(FAO_genes, pattern = "/"))
+
+ FAO_heatmap <- heatmap_generator(FAO_genes,cpm_matrix,metadata, "Fatty Acid Oxidation")
+ # tiff(here::here("Data/figures/FAOReactomeHM.tif"), unit = "cm", height = 30, width = 50, res = 600)
+ # FAO_heatmap
+ # dev.off()
+
+ #Extract glycogen metabolism genes
+ Glyc_genes <- reactomeCluster@compareClusterResult
+ Glyc_genes <- Glyc_genes |>
+     dplyr::filter(Description == "Glycogen metabolism") |>
+     dplyr::select(geneID)
+ Glyc_genes <- base::unlist(stringr::str_split(Glyc_genes, pattern = "/"))
+ Glyc_heatmap <- heatmap_generator(Glyc_genes,cpm_matrix,metadata, "Glycogen Metabolism")
+
+  # tiff(here::here("Data/figures/FlycReactomeHM.tif"), unit = "cm", height = 30, width = 50, res = 600)
+  # Glyc_heatmap
+  # dev.off()
+  #
+
+ #####Treeplot code####
+ go_sig_genes_cc <- goAnalysis(edgeR_data, "CC", "")
+ #printGOterms(go_sig_genes_cc)
+
+     for (i in 1:length(go_sig_genes)){
+         go_sig_genes[[i]] <- clusterProfiler::setReadable(go_sig_genes[[i]],
+                                                           OrgDb = org.Mm.eg.db, keyType = "ENTREZID")
+     }
+
+ for (i in 1:length(go_sig_genes_cc)){
+     go_sig_genes_cc[[i]] <- clusterProfiler::setReadable(go_sig_genes_cc[[i]],
+                                                          OrgDb = org.Mm.eg.db, keyType = "ENTREZID")
+ }
+
+ treeplot <- enrichplot::pairwise_termsim(go_sig_genes_cc[[3]])
+ enrichplot::treeplot(treeplot)
+
+ #####Fry test####
+ design <- stats::model.matrix(~ 0 + Group, metadata)
+ colnames(design) <- stringr::str_remove_all(colnames(design), "Group")
+ contrasts <- limma::makeContrasts(
+     Genotype_short = KO_5h - WT_5h,
+     Genotype_long = KO_18h - WT_18h,
+     Fast_WT = WT_18h - WT_5h,
+     Fast_KO = KO_18h - KO_5h,
+     levels = design)
+ #extract terms
+ # term <- AnnotationDbi::select(GO.db, keys = Go_term, columns = "TERM")
+ org.data <- org.Mm.egGO2ALLEGS
+ AnnotationDbi::Rkeys(org.data)<-"GO:0019395"
+ go.genes <- as.list(org.data)
+
+ colname_key <- clusterProfiler::bitr(cpm_matrix$SYMBOL,
+                                      fromType = "SYMBOL",
+                                      toType = "ENTREZID",
+                                      OrgDb = "org.Mm.eg.db",
+                                      drop = T)
+ cpm_entrez <- as.data.frame(cpm_matrix)
+
+ cpm_entrez <- cpm_entrez |>
+     dplyr::filter(!is.na(SYMBOL))
+
+ cpm_entrez <- dplyr::arrange(cpm_entrez, desc(cpm_entrez[1])) |>
+     dplyr::distinct(SYMBOL, .keep_all = T)
+
+
+
+
+
+ cpm_entrez <- subset(cpm_entrez, rownames(cpm_entrez)%in%colname_key$SYMBOL)
+ cpm_entrez <- left_join(cpm_entrez, colname_key, by ="SYMBOL")
+ rownames(cpm_entrez)<-cpm_entrez$ENTREZID
+ cpm_entrez <- cpm_entrez %>%
+     dplyr::select(-SYMBOL, -ENTREZID, -ENSEMBL)
+ cpm_entrez <- as.matrix(cpm_entrez)
+
+ all(metadata$ID == colnames(cpm_entrez))
+
+ contrasts <- limma::makeContrasts(
+     Genotype_short = KO_18h - WT_18h,
+     levels = design)
+
+ org.data <- org.Mm.egGO2ALLEGS
+ AnnotationDbi::Rkeys(org.data)<-"GO:0050840"
+ go.genes <- as.list(org.data)
+
+ x <- org.Mm.egGO2ALLEGS |> as.list()
+ x <- x[["GO:0050840"]]
+ x <- which(rownames(cpm_entrez) %in% x)
+
+ limma::mroast(cpm_entrez,
+            index = x,
+            design = design,
+            contrast = contrasts)
+
+#####Reactome 18h####
+
+heatmap_test <- heatmap_generator(reactome_test_down[["Genotype_long"]]@result$geneID[12], cpm_matrix = cpm_matrix,setup = metadata, heatmap_title = reactome_test_down[["Genotype_long"]]@result$Description[12])
+  tiff(here::here("Data/figures/metabolism_og_lipids.tif"), unit = "cm", height = 30, width = 50, res = 600)
+  heatmap_test
+  dev.off()
 
