@@ -337,8 +337,9 @@ goAnalysis <- function(result_list, ontology, direction){
         for(i in 1:length(result_list)){
             sig_list[[i]]<- result_list[[i]] %>%
                 dplyr::filter(FDR<0.05) |>
-                dplyr::filter(FC>0)
+                dplyr::filter(logFC>0)
         }
+        print("Running on upregulated")
 
         }
 
@@ -347,14 +348,16 @@ goAnalysis <- function(result_list, ontology, direction){
                 sig_list[[i]]<- result_list[[i]] %>%
                     dplyr::filter(FDR<0.05) |>
                     dplyr::filter(logFC<0)
-                }
+            }
+        print("Running on downregulated")
 
             }
-    else{for(i in 1:length(result_list)){
+    if(direction == ""){
+        for(i in 1:length(result_list)){
                     sig_list[[i]]<- result_list[[i]] %>%
                         dplyr::filter(FDR<0.05)
-    }
-
+            }
+    print("Running on all genes")
     }
     for(i in 1:length(result_list)){
         eg <- clusterProfiler::bitr(
@@ -367,7 +370,8 @@ goAnalysis <- function(result_list, ontology, direction){
                 goResults <- clusterProfiler::enrichGO(gene = eg$ENTREZID,
                                                        universe = bg_list$ENTREZID,
                                                        OrgDb = org.Mm.eg.db,
-                                                       ont = ontology)
+                                                       ont = ontology,
+                                                       readable =T)
                 goResult_list[[i]]<- goResults
     }
 
@@ -384,21 +388,21 @@ goAnalysis <- function(result_list, ontology, direction){
 #'
 #' @return
 
-printGOterms <- function(goList){
+printGOterms <- function(goList, filename){
     goSheets<- vector(mode = "list", length = length(goList))
     for (i in 1:length(goSheets)){
         goSheets[[i]] <- goList[[i]]@result
         names(goSheets)[i]<-names(goList)[i]
     }
-    openxlsx::write.xlsx(goSheets, file = here("data/NASH_NAFLD_GOterms.xlsx"), asTable = TRUE)
+    openxlsx::write.xlsx(goSheets, file = here(paste("data/",filename,".xlsx",sep = "")), asTable = TRUE)
 
-    for (i in 1:length(goList)){
-        dotplot <- enrichplot::dotplot(goList[[i]], title = names(goList)[i])
-        ggplot2::ggsave(dotplot, filename = paste(here("data/figures"),"/dotplot_",names(goList[i]),".png", sep = ""),width = 12, height = 12, units = "cm", scale = 2.5)
-        goList_anno <- clusterProfiler::setReadable(goList[[i]], OrgDb = org.Mm.eg.db, keyType="ENTREZID")
-        cnetplot <- enrichplot::cnetplot(goList_anno, title = names(goList)[i], size = 1)
-        ggplot2::ggsave(cnetplot, filename = paste(here("data/figures"),"/cnetplot_",names(goList[i]),".png", sep = ""),scale = 2.5)
-    }
+    # for (i in 1:length(goList)){
+    #     dotplot <- enrichplot::dotplot(goList[[i]], title = names(goList)[i])
+    #     ggplot2::ggsave(dotplot, filename = paste(here("data/figures"),"/dotplot_",names(goList[i]),".png", sep = ""),width = 12, height = 12, units = "cm", scale = 2.5)
+    #     goList_anno <- clusterProfiler::setReadable(goList[[i]], OrgDb = org.Mm.eg.db, keyType="ENTREZID")
+    #     cnetplot <- enrichplot::cnetplot(goList_anno, title = names(goList)[i], size = 1)
+    #     ggplot2::ggsave(cnetplot, filename = paste(here("data/figures"),"/cnetplot_",names(goList[i]),".png", sep = ""),scale = 2.5)
+    # }
 }
 
 #
@@ -435,10 +439,18 @@ annotateWithGenes <- function(tests, termList, fromType){
 #'
 #'
 
-heatmap_generator <- function(input_genes, cpm_matrix, setup, heatmap_title){
+heatmap_generator <- function(input_genes, cpm_matrix, setup, heatmap_title, gene_no){
+    if(missing(gene_no)){
+        gene_no <- ""
+    }
     #Generate Gene list
     gene_list <- input_genes
     gene_list <- unlist(str_split(gene_list, "/"))
+    gene_list <- stringr::str_to_title(gene_list)
+
+    if(gene_no !=""){
+        gene_list <- gene_list[1:gene_no]
+    }
 
     #Select Candidates in Gene List
     trimmed_cpm <- cpm_matrix |>
@@ -509,10 +521,18 @@ heatmap_generator <- function(input_genes, cpm_matrix, setup, heatmap_title){
 #'
 #'
 
-heatmap_generator_clustered <- function(input_genes, cpm_matrix, setup, heatmap_title){
+heatmap_generator_clustered <- function(input_genes, cpm_matrix, setup, heatmap_title, gene_no){
+    if(missing(gene_no)){
+        gene_no <- ""
+    }
     #Generate Gene list
     gene_list <- input_genes
     gene_list <- unlist(str_split(gene_list, "/"))
+    gene_list <- stringr::str_to_title(gene_list)
+
+    if(gene_no !=""){
+        gene_list <- gene_list[1:gene_no]
+    }
 
     #Select Candidates in Gene List
     trimmed_cpm <- cpm_matrix |>
@@ -637,4 +657,174 @@ reactomeAnalysis <- function(result_list, direction){
 
 }
 
+#' Heatmap for TF targets
+#'
+#' @param input_genes
+#' @param cpm_matrix
+#' @param setup
+#' @param heatmap_title
+#' @param gene_no
+#'
+#' @return
 
+heatmap_generator_TF <- function(input_genes,clustering_result, cpm_matrix, setup, heatmap_title, gene_no){
+    if(missing(gene_no)){
+        gene_no <- ""
+    }
+    gene_list <- clustering_result@compareClusterResult |>
+        dplyr::filter(ID == input_genes) |>
+        dplyr::select(geneID)
+    gene_list <-gene_list$geneID
+
+    #Generate Gene list
+
+    gene_list <- unlist(str_split(gene_list, "/"))
+    gene_list <- stringr::str_to_title(gene_list)
+
+    if(gene_no !=""){
+        gene_list <- gene_list[1:gene_no]
+    }
+
+    #Select Candidates in Gene List
+    trimmed_cpm <- cpm_matrix |>
+        dplyr::filter(SYMBOL %in% gene_list) |>
+        dplyr::distinct(SYMBOL, .keep_all = T)
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::filter(!is.na(SYMBOL)) |>
+        dplyr::arrange(SYMBOL)
+    rownames(trimmed_cpm)<-trimmed_cpm$SYMBOL
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::select(-SYMBOL)
+
+    #Order metadata
+    setup_ordered <- setup |>
+        dplyr::mutate(
+            Group = dplyr::case_when(
+                Group == "WT_18h" ~ "WT 18h",
+                Group == "KO_18h" ~ "HNKO 18h",
+                Group == "WT_5h" ~ "WT 5h",
+                Group == "KO_5h" ~ "HNKO 5h"
+            )
+        )
+    order <- c("WT 5h", "HNKO 5h", "WT 18h", "HNKO 18h")
+    setup_ordered <- setup_ordered %>%
+        dplyr::arrange(desc(Fast),desc(Genotype))
+    setup_ordered$Sample <- as.character(setup_ordered$Sample)
+
+    #arrange data based on setup sheet
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::select(setup_ordered$Sample)
+
+    #create annotation key for heatmap
+    key <- as.data.frame(setup_ordered)
+    key <- key |>
+        dplyr::select(Group)
+    rownames(key) <- setup_ordered$Sample
+    key$Group <-factor(key$Group, c("WT 5h", "HNKO 5h", "WT 18h", "HNKO 18h"))
+
+    #create heatmap
+    Heatmap <- pheatmap::pheatmap(trimmed_cpm,
+                                  treeheight_col = 0,
+                                  treeheight_row = 0,
+                                  scale = "row",
+                                  legend = T,
+                                  na_col = "white",
+                                  Colv = NA,
+                                  na.rm = T,
+                                  cluster_cols = F,
+                                  fontsize_row = 5,
+                                  fontsize_col = 8,
+                                  cellwidth = 7,
+                                  cellheight = 5,
+                                  annotation_col = key,
+                                  show_colnames = F,
+                                  show_rownames = T,
+                                  main = heatmap_title,
+                                  cluster_rows = F
+    )
+
+}
+
+
+#' Heatmap Generator clustered
+#'
+#' @param input_genes list of genes selected from enrichresult
+#' @param cpm_matrix count matrix
+#' @param setup metadta
+#' @param heatmap_title title for heatmap
+#'
+#'
+
+heatmap_generator_clustered_sub <- function(input_genes, cpm_matrix, setup, heatmap_title, gene_no){
+    if(missing(gene_no)){
+        gene_no <- ""
+    }
+    #Generate Gene list
+    gene_list <- input_genes
+    gene_list <- unlist(str_split(gene_list, "/"))
+    gene_list <- stringr::str_to_title(gene_list)
+
+    if(gene_no !=""){
+        gene_list <- gene_list[1:gene_no]
+    }
+
+    #Select Candidates in Gene List
+    trimmed_cpm <- cpm_matrix |>
+        dplyr::filter(SYMBOL %in% gene_list) |>
+        dplyr::distinct(SYMBOL, .keep_all = T)
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::filter(!is.na(SYMBOL))
+    rownames(trimmed_cpm)<-trimmed_cpm$SYMBOL
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::select(-SYMBOL)
+
+    #Order metadata
+    setup_ordered <- setup |>
+        dplyr::mutate(
+            Necrosis_grouped = dplyr::case_when(
+                Necrosis_grouped == "WT_18h" ~ "WT 18h",
+                Necrosis_grouped == "NormalKO_18h" ~ "Normal HNKO 18h",
+                Necrosis_grouped == "WT_5h" ~ "WT 5h",
+                Necrosis_grouped == "NormalKO_5h" ~ "Normal HNKO 5h",
+                Necrosis_grouped == "NecrosisKO_5h" ~ "Necrosis HNKO 5h",
+                Necrosis_grouped == "NecrosisKO_18h"~"Necrosis HNKO 18h"
+            )
+        )
+    order <- c("WT 5h", "Normal HNKO 5h","Necrosis HNKO 5h", "WT 18h", "Normal HNKO 18h", "Necrosis HNKO 18h")
+    setup_ordered <- setup_ordered %>%
+        dplyr::arrange(desc(Fast),desc(Necrosis_grouped))
+    setup_ordered$Sample <- as.character(setup_ordered$Sample)
+
+    #arrange data based on setup sheet
+    trimmed_cpm <- trimmed_cpm |>
+        dplyr::select(setup_ordered$Sample)
+
+    #create annotation key for heatmap
+    key <- as.data.frame(setup_ordered)
+    key <- key |>
+        dplyr::select(Necrosis_grouped)
+    rownames(key) <- setup_ordered$Sample
+    key$Necrosis_grouped <-factor(key$Necrosis_grouped, c("WT 5h", "Normal HNKO 5h","Necrosis HNKO 5h", "WT 18h", "Normal HNKO 18h", "Necrosis HNKO 18h"))
+
+
+    #create heatmap
+    Heatmap <- pheatmap::pheatmap(trimmed_cpm,
+                                  treeheight_col = 0,
+                                  treeheight_row = 0,
+                                  scale = "row",
+                                  legend = T,
+                                  na_col = "white",
+                                  Colv = NA,
+                                  na.rm = T,
+                                  cluster_cols = F,
+                                  fontsize_row = 5,
+                                  fontsize_col = 8,
+                                  cellwidth = 7,
+                                  cellheight = 5,
+                                  annotation_col = key,
+                                  show_colnames = F,
+                                  show_rownames = T,
+                                  main = heatmap_title
+    )
+
+}

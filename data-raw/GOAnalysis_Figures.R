@@ -60,6 +60,7 @@ go_sig_genes <- goAnalysis(edgeR_data, "MF", "")
 
 go_sig_genes_cc <- goAnalysis(edgeR_data, "CC", "")
 #printGOterms(go_sig_genes_cc)
+go_sig_genes_bp <- goAnalysis(edgeR_data, "BP", "")
 
 for (i in 1:length(go_sig_genes)){
     go_sig_genes[[i]] <- clusterProfiler::setReadable(go_sig_genes[[i]],
@@ -578,7 +579,58 @@ clusterProfiler::dotplot(clusterTest, showCategory = 10)
 #####Reactome 18h####
 
 heatmap_test <- heatmap_generator(reactome_test_down[["Genotype_long"]]@result$geneID[12], cpm_matrix = cpm_matrix,setup = metadata, heatmap_title = reactome_test_down[["Genotype_long"]]@result$Description[12])
-  tiff(here::here("Data/figures/metabolism_og_lipids.tif"), unit = "cm", height = 30, width = 50, res = 600)
-  heatmap_test
-  dev.off()
+  # tiff(here::here("Data/figures/metabolism_og_lipids.tif"), unit = "cm", height = 30, width = 50, res = 600)
+  # heatmap_test
+  # dev.off()
 
+#####MDS plot colored for additional data####
+data_collection <- openxlsx::read.xlsx(here::here("data-raw/additionalData.xlsx"))
+ cpm_mds <- cpm_matrix |>
+     dplyr::select(-ENSEMBL, -SYMBOL) |>
+     dplyr::select(as.character(metadata$Sample))
+
+ mdsData <- limma::plotMDS(as.matrix(cpm_mds), plot = F)
+ mdsData <-
+     mdsData$eigen.vectors %>% as.data.table() %>%
+     dplyr::mutate(ID = metadata$Sample) %>%
+     dplyr::mutate(Group = metadata$Group) %>%
+     dplyr::select(ID, Group, V1, V2, V3)
+ setnames(mdsData,
+          c("V1", "V2", "V3", "ID", "Group"),
+          c("dim1", "dim2", "dim3", "ID", "Group"))
+ mdsData <- mdsData |>
+     dplyr::arrange(ID)
+ all(mdsData$ID==data_collection$ID)
+ mdsData <- dplyr::left_join(mdsData, data_collection, by = ("ID"="ID"))
+ pBase <-
+     ggplot(mdsData, aes(x = dim1, y = dim2, colour = NAD)) +
+     geom_point(size = 5) +
+     #geom_label(show.legend = FALSE, size = 5) +
+     theme_bw()
+ pBase
+
+  # tiff(here::here("Data/figures/NAD_MDS.tif"), unit = "cm", height = 20, width = 20, res = 150)
+  # pBase
+  # dev.off()
+ pBase2 <-
+     ggplot(mdsData, aes(x = dim1, y = dim2, colour = Necrosis)) +
+     geom_point(size = 5) +
+     #geom_label(show.legend = FALSE, size = 5) +
+     theme_bw()
+ pBase2
+
+  # tiff(here::here("Data/figures/Necrosis_MDS.tif"), unit = "cm", height = 20, width = 20, res = 150)
+  # pBase2
+  # dev.off()
+
+ pBase3 <-
+     ggplot(mdsData, aes(x = dim1, y = dim2, colour = Tg)) +
+     geom_point(size = 5) +
+     #geom_label(show.legend = FALSE, size = 5) +
+     theme_bw()
+ pBase3
+
+ # tiff(here::here("Data/figures/Necrosis_MDS.tif"), unit = "cm", height = 20, width = 20, res = 150)
+ # pBase2
+ # dev.off()
+ #

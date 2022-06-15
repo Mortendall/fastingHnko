@@ -6,7 +6,7 @@ counts <- count_matrix_assembly("count_matrix.xlsx")
 metadata <- load_metadata("metadata.xlsx")
 metadata <- metadata %>% dplyr::mutate(Group = paste(Genotype, Fast, sep = "_"))
 
-Quality_control_plots(counts, metadata)
+#Quality_control_plots(counts, metadata)
 
 #no evident outliers
 
@@ -18,6 +18,8 @@ ctrsts <- limma::makeContrasts(
     Fast_WT = WT_18h - WT_5h,
     Fast_KO = KO_18h - KO_5h,
     Interaction = (KO_18h - KO_5h)- (WT_18h - WT_5h),
+    Main_Fasting = (WT_18h + KO_18h)/2 - (WT_5h + KO_5h)/2,
+    Main_Geno = (KO_5h + KO_18h)/2 - (WT_5h + WT_18h)/2,
     levels = design)
 
 metadata$Sample <- as.character(metadata$Sample)
@@ -51,7 +53,7 @@ for (i in 1:length(dgeResults_annotated)){
     dgeResults_annotated[[i]] <- dplyr::full_join(dgeResults_annotated[[i]], ens2symbol)
 }
 
-#write.xlsx(dgeResults_annotated, file = here("data/edgeR.xlsx"), asTable = TRUE)
+#write.xlsx(dgeResults_annotated, file = here("data/edgeR_with_main.xlsx"), asTable = TRUE)
 
 
 #Make and save a cpm_matrix with annotations
